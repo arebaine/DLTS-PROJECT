@@ -1,41 +1,5 @@
 import torch as torch
-import torch.nn.functional as F
 import os as os
-import scipy
-from scipy.io.wavfile import read
-import numpy as np
-
-class MyDataset(torch.utils.data.Dataset):
-    def __init__(self, path_to_data, n_fft):
-        super().__init__()
-        self.path = path_to_data
-        self.n_fft = n_fft
-        self.length = len(os.listdir(path_to_data))
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self,i):
-        Smixte, Svoice, Snoise = None, None, None
-        str_i = str(i)
-        while len(str_i) < 4:
-            str_i = '0' + str_i
-        path_to_sample = os.path.join(self.path, str_i)
-        if os.path.isdir(path_to_sample):
-            for filename in os.listdir(path_to_sample):
-                path_to_file = os.path.join(path_to_sample, filename)
-                if filename.endswith(".wav"):
-                    _, audio = read(path_to_file)
-                    audio = audio/np.max(np.abs(audio))
-                    audio/=np.std(audio)
-                    audio = torch.tensor(audio)
-                    if  "mix" in filename:
-                        Smixte = torch.stft(audio, n_fft=self.n_fft, window= torch.hann_window(self.n_fft), return_complex=True).unsqueeze(0)
-                    elif "noise" in  filename:
-                        Snoise = torch.stft(audio, n_fft=self.n_fft, window= torch.hann_window(self.n_fft), return_complex=True).unsqueeze(0)
-                    else:
-                        Svoice = torch.stft(audio, n_fft=self.n_fft, window= torch.hann_window(self.n_fft), return_complex=True).unsqueeze(0)
-        return (Smixte, Snoise, Svoice)
     
 class EncoderConvBlock(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
