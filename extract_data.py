@@ -1,4 +1,9 @@
 import os
+import torch
+import torchaudio
+from torchmetrics.audio import ScaleInvariantSignalDistortionRatio
+import pandas as pd
+import re
 import numpy as np
 import scipy
 import matplotlib.pylab as plt 
@@ -216,3 +221,67 @@ def plot_amplitude(path_to_signal):
     plt.tight_layout()
 
     plt.show()
+
+def plotlosses_history(df):
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(df.index +1, df['train_loss'], label='Train Loss', color='blue', marker='o')
+    plt.plot(df.index+1, df['valid_loss'], label='Valid Loss', color='orange', marker='x')
+
+    # Ajout de titres et de légendes
+    plt.title('Train and Validation Loss for UNet with L1 loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # Affichage
+    plt.show()
+
+def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model", device = 'cpu'):
+
+    device = torch.device(device)
+    model.to(device)
+
+    si_sdr_dict = { str(int(snr)) : [] for snr in test_data.SNR.unique()}
+
+    si_sdr = ScaleInvariantSignalDistortionRatio()
+    for i in range(len(test_data)):
+        snr = test_data.iloc[i]['SNR']
+        path_to_data = test_data.iloc[i]['Path']
+
+        voice_audio, _ = torchaudio.load(path_to_data+'/voice.wav')
+        mix_audio, _ = torchaudio.load(path_to_data+'/mix_snr_{:.0f}.wav'.format(snr))
+
+        Sxx_mix = torch.stft(mix_audio, n_fft=800, window=torch.hann_window(800), return_complex=True).unsqueeze(0).to(device)
+        Sxx_mix_ampl = torch.abs(Sxx_mix)
+        pred = model(Sxx_mix_ampl)
+
+        Sxx_voice_reconstruct = pred*Sxx_mix/Sxx_mix_ampl
+        audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
+
+        si_sdr_dict[str(int(snr))].append(float(si_sdr(voice_audio,audio_reconstruct).detach().numpy()))
+
+    if affichage :
+        plot_SISDR_by_SNR(si_sdr_dict, model_name)
+    
+    return si_sdr_dict
+
+        
+def plot_SISDR_by_SNR(si_sdr_dict, model_name):
+
+    sorted_keys = sorted(si_sdr_dict.keys())  # Liste des clés triées
+    sorted_values = [si_sdr_dict[key] for key in sorted_keys]
+
+    # Création du boxplot
+    plt.figure(figsize=(8, 5))
+    plt.boxplot(sorted_values, tick_labels=sorted_keys, patch_artist=True)
+
+    # Ajout de titres et d'annotations
+    plt.title('SI-SDR by SNR for {}'.format(model_name))
+    plt.xlabel('SNR')
+    plt.ylabel('SI-SDR')
+    plt.grid(True)
+
+    # Affichage
+    plt.show() 

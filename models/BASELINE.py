@@ -1,4 +1,4 @@
-from utils import EncoderConvBlock, DecoderConvBlock
+from models.utils import EncoderConvBlock, DecoderConvBlock
 import torch as torch
 import torch.nn.functional as F
 
