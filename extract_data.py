@@ -250,15 +250,17 @@ def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model
         snr = test_data.iloc[i]['SNR']
         path_to_data = test_data.iloc[i]['Path']
 
-        voice_audio, _ = torchaudio.load(path_to_data+'/voice.wav')
-        mix_audio, _ = torchaudio.load(path_to_data+'/mix_snr_{:.0f}.wav'.format(snr))
+        _, voice_audio = scipy.io.wavfile.read(os.path.join(path_to_data, 'voice.wav'))
+        _, mix_audio = scipy.io.wavfile.read(path_to_data+'/mix_snr_{:.0f}.wav'.format(snr))
+        voice_audio, mix_audio = torch.Tensor(voice_audio), torch.Tensor(mix_audio)
 
-        Sxx_mix = torch.stft(mix_audio, n_fft=800, window=torch.hann_window(800), return_complex=True).unsqueeze(0).to(device)
+        Sxx_mix = torch.stft(mix_audio, n_fft=800, window=torch.hann_window(800), return_complex=True).unsqueeze(0).unsqueeze(0).to(device)
         Sxx_mix_ampl = torch.abs(Sxx_mix)
         pred = model(Sxx_mix_ampl)
 
+
         Sxx_voice_reconstruct = pred*Sxx_mix/Sxx_mix_ampl
-        audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
+        audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
 
         si_sdr_dict[str(int(snr))].append(float(si_sdr(voice_audio,audio_reconstruct).detach().numpy()))
 

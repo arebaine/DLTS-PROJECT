@@ -24,7 +24,7 @@ def loss_dc(output, one_hot_encoding, Sxx_mag_mix):
     B,T,F,D = output.shape
     embedding = embedding.view(B, -1, D)
     Sxx_mag_mix = Sxx_mag_mix.detach().view(B, -1)
-    one_hot_encoding = label.view(B, -1, 2)
+    one_hot_encoding = one_hot_encoding.view(B, -1, 2)
 
     # remove the loss of silence TF regions
     silence_mask = one_hot_encoding.sum(2, keepdim=True)
@@ -33,13 +33,13 @@ def loss_dc(output, one_hot_encoding, Sxx_mag_mix):
     # referred as weight WR
     # W_i = |x_i| / \sigma_j{|x_j|}
     weights = torch.sqrt(Sxx_mag_mix / Sxx_mag_mix.sum(1, keepdim=True))
-    label = label * weights.view(B, T*F, 1)
+    one_hot_encoding = one_hot_encoding * weights.view(B, T*F, 1)
     embedding = embedding * weights.view(B, T*F, 1)
 
     # do batch affinity matrix computation
     loss_est = norm(torch.bmm(T(embedding), embedding))
-    loss_est_true = 2*norm(torch.bmm(T(embedding), label))
-    loss_true = norm(torch.bmm(T(label), label))
+    loss_est_true = 2*norm(torch.bmm(T(embedding), one_hot_encoding))
+    loss_true = norm(torch.bmm(T(one_hot_encoding), one_hot_encoding))
     loss_embedding = loss_est - loss_est_true + loss_true
 
     return loss_embedding * Sxx_mag_mix.sum(1, keepdim=True)

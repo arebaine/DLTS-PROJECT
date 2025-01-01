@@ -120,3 +120,8 @@ def pytorch_pipeline_single(device, model, train_data, validation_data, optimize
         hist_loss_valid.append(valid_loss/len(validation_data))      
         print(f"VALIDATION : epoch [{epoch+1}/{n_epoch}] - Loss : {valid_loss/len(validation_data):.2f}")
     torch.save(model, path_save_model)
+
+def one_hot_encoding(Sxx_voice, Sxx_noise):
+    output = torch.zeros(Sxx_voice.shape + (2,))  
+    output[..., 0] = (Sxx_voice > Sxx_noise).float()  
+    output[..., 1] = (Sxx_voice < Sxx_noise).float()  
