@@ -242,7 +242,7 @@ def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model
 
     si_sdr_dict = { str(int(snr)) : [] for snr in test_data.SNR.unique()}
 
-    si_sdr = ScaleInvariantSignalDistortionRatio()
+    si_sdr = ScaleInvariantSignalDistortionRatio().to(device)
     for i in range(len(test_data)):
         snr = test_data.iloc[i]['SNR']
         path_to_data = test_data.iloc[i]['Path']
@@ -256,12 +256,12 @@ def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model
             pred = model(Sxx_mix_ampl)
 
             Sxx_voice_reconstruct = pred*Sxx_mix/Sxx_mix_ampl
-            audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
+            audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800)).to(device)
         
         else :
-            audio_reconstruct = model(mix_audio.unsqueeze(0).to(device))
-
-        si_sdr_dict[str(int(snr))].append(float(si_sdr(voice_audio,audio_reconstruct).detach().numpy()))
+            audio_reconstruct = model(mix_audio.unsqueeze(0).to(device)).squeeze(0)
+            
+        si_sdr_dict[str(int(snr))].append(float(si_sdr(voice_audio.to(device),audio_reconstruct).cpu().detach().numpy()))
 
     if affichage :
         plot_SISDR_by_SNR(si_sdr_dict, model_name)
@@ -287,7 +287,7 @@ def plot_SISDR_by_SNR(si_sdr_dict, model_name):
     # Affichage
     plt.show() 
 
-def interactive_reconstruction(df, model):
+def interactive_reconstruction(df, model, spectrogram = True):
     # Trier les SNR par ordre croissant
     sorted_snr = sorted(df["SNR"].unique())
 
@@ -322,7 +322,7 @@ def interactive_reconstruction(df, model):
 
         # Récupérer le signal correspondant
         path_to_signal = df[(df["SNR"] == selected_snr) & (df["Nom"] == selected_name)]["Path"].values[0]
-        plot_reconstruction(model, path_to_signal)
+        plot_reconstruction(model, path_to_signal, spectrogram)
 
     # Lier la mise à jour des noms au changement du SNR
     snr_dropdown.observe(update_names, names="value")
@@ -334,7 +334,7 @@ def interactive_reconstruction(df, model):
     # Afficher les widgets
     display(snr_dropdown, name_dropdown)
 
-def plot_reconstruction(model, path_to_signal):
+def plot_reconstruction(model, path_to_signal, spectrogram = True):
 
     model.to("cpu")
 
@@ -343,11 +343,19 @@ def plot_reconstruction(model, path_to_signal):
     Smix = torch.stft(torch.tensor(signal.mix["audio"]), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0)
     Svoice = torch.stft(torch.tensor(signal.voice["audio"]), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0)
 
-    Smix_ampl = torch.abs(Smix)
-    Svoice_ampl = torch.abs(Svoice)
-    mask = model(Smix_ampl.unsqueeze(0))
-    svoice_reconst = mask*Smix/Smix_ampl
-    svoice_reconst = svoice_reconst/torch.max(torch.abs(svoice_reconst))
+    if spectrogram:
+        Smix_ampl = torch.abs(Smix)
+        Svoice_ampl = torch.abs(Svoice)
+        mask = model(Smix_ampl.unsqueeze(0))
+        svoice_reconst = mask*Smix/Smix_ampl
+        svoice_reconst = svoice_reconst/torch.max(torch.abs(svoice_reconst))
+
+        audio = torch.istft(svoice_reconst[0,0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
+    else :
+        mix_audio = torch.tensor(signal.mix["audio"]).unsqueeze(0).unsqueeze(0)
+        audio = model(mix_audio).squeeze(0).squeeze(0)
+
+        svoice_reconst = torch.stft(audio, n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0).unsqueeze(0)
 
     fig, axes = plt.subplots(2,3, figsize = (25,12))
 
@@ -361,9 +369,7 @@ def plot_reconstruction(model, path_to_signal):
 
     pcm2 = axes[0,2].pcolormesh(20*np.log10(np.abs(svoice_reconst[0,0,:,:].detach().numpy())), cmap='viridis')
     fig.colorbar(pcm2, ax = axes[0,2])
-    axes[0,2].set_title("Spectrogramme de la voix reconstruite")
-
-    audio = torch.istft(svoice_reconst[0,0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800))
+    axes[0,2].set_title("Spectrogramme reconstruit")
 
     time = np.array(list(range(80000)))/8000
     axes[1,0].plot(time, signal.mix["audio"])
