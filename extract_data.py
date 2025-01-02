@@ -37,9 +37,6 @@ class load_signal():
         
         # On nomralise les données afin d'éviter la saturation ou la distorsion du audio
         audio = audio/np.max(np.abs(audio)) 
-
-        # On divise par l'écart type afin d'avoir un audio de variance = 1
-        audio/=np.std(audio)
         
         return {
             "fe" : fe,
@@ -350,6 +347,7 @@ def plot_reconstruction(model, path_to_signal):
     Svoice_ampl = torch.abs(Svoice)
     mask = model(Smix_ampl.unsqueeze(0))
     svoice_reconst = mask*Smix/Smix_ampl
+    svoice_reconst = svoice_reconst/torch.max(torch.abs(svoice_reconst))
 
     fig, axes = plt.subplots(2,3, figsize = (25,12))
 

@@ -88,33 +88,19 @@ class WaveUNetPart(nn.Module):
     def forward(self, x):
         tmp = []
         o = x
-        # print("1", o.size)
-        # Up Sample
         for encoder in self.encoder:
-            # print("******")
             o = encoder(o)
-            # print("**",o.shape)
             tmp.append(o)
             o = F.max_pool1d(o, kernel_size=2, stride=2)
-            # print("**",o.shape)
 
         o = self.bottleneck(o)
-        # print("bottleneck",o.shape)
 
         for i in range(self.n_layers):
-            # print("******")
             o = F.interpolate(o, size = tmp[self.n_layers - i - 1].shape[-1], mode="linear", align_corners=True)
-            # print("**",o.shape)
-            # print("**", tmp[self.n_layers - i - 1].shape)
             o = torch.cat((o, tmp[self.n_layers - i - 1]), dim=1)
-            # print("**",o.shape)
             o = self.decoder[i](o)
-            # print("**",o.shape)
         o = torch.cat((o, x), dim=1)
-        # print(o.shape)
-        # print(1+self.channels_interval)
         o = self.out(o)
-        # print(o.shape)
         return o
     
 
