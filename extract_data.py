@@ -253,6 +253,7 @@ def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model
         if spectrogram:
             Sxx_mix = torch.stft(mix_audio, n_fft=800, window=torch.hann_window(800), return_complex=True).unsqueeze(0).to(device)
             Sxx_mix_ampl = torch.abs(Sxx_mix)
+            Sxx_mix_ampl = Sxx_mix_ampl/torch.max(Sxx_mix_ampl)
             pred = model(Sxx_mix_ampl)
 
             Sxx_voice_reconstruct = pred*Sxx_mix/Sxx_mix_ampl
@@ -334,7 +335,7 @@ def interactive_reconstruction(df, model, spectrogram = True):
     # Afficher les widgets
     display(snr_dropdown, name_dropdown)
 
-def plot_reconstruction(model, path_to_signal, spectrogram = True):
+def plot_reconstruction(model, path_to_signal, spectrogram = True, ):
 
     model.to("cpu")
 
@@ -345,7 +346,7 @@ def plot_reconstruction(model, path_to_signal, spectrogram = True):
 
     if spectrogram:
         Smix_ampl = torch.abs(Smix)
-        Svoice_ampl = torch.abs(Svoice)
+        Smix_ampl = Smix_ampl/torch.max(Smix_ampl)
         mask = model(Smix_ampl.unsqueeze(0))
         svoice_reconst = mask*Smix/Smix_ampl
         svoice_reconst = svoice_reconst/torch.max(torch.abs(svoice_reconst))
