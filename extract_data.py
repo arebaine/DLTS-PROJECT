@@ -270,41 +270,6 @@ def SISDR_by_SNR(model, test_data , affichage = True, model_name = "nom du model
     
     return si_sdr_dict
 
-def SISDR_by_SNR_DC(model,test_data , affichage = True, model_name = "Deep Clustering", device = 'cpu', spectrogram = True):
-    '''
-    Compute the Si-SDR by SNR, only for the deep clustering model
-    '''
-    device = torch.device(device)
-    model.to(device)
-
-    si_sdr_dict = { str(int(snr)) : [] for snr in test_data.SNR.unique()}
-
-    si_sdr = ScaleInvariantSignalDistortionRatio().to(device)
-    for i in range(len(test_data)):
-        snr = test_data.iloc[i]['SNR']
-        path_to_data = test_data.iloc[i]['Path']
-
-        _, voice_audio = scipy.io.wavfile.read(os.path.join(path_to_data, 'voice.wav'))
-        _, mix_audio = scipy.io.wavfile.read(path_to_data+'/mix_snr_{:.0f}.wav'.format(snr))
-        voice_audio, mix_audio = torch.Tensor(voice_audio), torch.Tensor(mix_audio)
-
-        if spectrogram:
-            Sxx_mix = torch.stft(mix_audio, n_fft=800, window=torch.hann_window(800), return_complex=True).unsqueeze(0).unsqueeze(0).to(device)
-            Sxx_mix_ampl = torch.abs(Sxx_mix)
-            Sxx_mix_ampl = Sxx_mix_ampl/torch.max(Sxx_mix_ampl)
-            pred = model(Sxx_mix_ampl)
-
-            Sxx_voice_reconstruct = pred*Sxx_mix/Sxx_mix_ampl
-            audio_reconstruct = torch.istft(Sxx_voice_reconstruct[0,0,:,:].to('cpu'), n_fft = 800, window=torch.hann_window(800)).to(device)
-        
-            
-        si_sdr_dict[str(int(snr))].append(float(si_sdr(voice_audio.to(device),audio_reconstruct).cpu().detach().numpy()))
-
-    if affichage :
-        plot_SISDR_by_SNR(si_sdr_dict, model_name)
-    
-    return si_sdr_dict
-
         
 def plot_SISDR_by_SNR(si_sdr_dict, model_name):
 
@@ -425,13 +390,13 @@ def compute_clustering(clustering_model, dc_model, signal, device="cpu"):
     Smix = torch.stft(torch.tensor(signal), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0).to(device)
     Smix_abs = torch.abs(Smix)
     # Compute the embeddings of the spectrograms
-    Smix_emb = dc_model(Smix_abs/torch.max(Smix))
+    Smix_emb = dc_model(Smix_abs/torch.max(Smix_abs))
     _,T,F,D = Smix_emb.shape
-
     # Perform clustering
     model = clustering_model(n_clusters=2, random_state=42)
-    clustering_model.fit(Smix_emb[0,:,:,:].view(-1,D).to("cpu").detach())
-    class_assignments = torch.Tensor(clustering_model.predict(Smix_emb[0,:,:,:].view(-1,D).to("cpu").detach())).reshape(T,F)
+    model.fit(Smix_emb[0,:,:,:].view(-1,D).to("cpu").detach())
+    
+    class_assignments = torch.Tensor(model.predict(Smix_emb[0,:,:,:].view(-1,D).to("cpu").detach())).reshape(T,F)
     S1 = class_assignments*(Smix_abs[0,:,:].to("cpu"))
     S2 = (1-class_assignments)*(Smix_abs[0,:,:].to("cpu"))
 
@@ -450,7 +415,6 @@ def plot_reconstruction_dc(model, path_to_signal, clustering_model):
     model.to("cpu")
 
     signal = load_signal(path_to_signal)
-
     Smix = torch.stft(torch.tensor(signal.mix["audio"]), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0)
     Svoice = torch.stft(torch.tensor(signal.voice["audio"]), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0)
     Snoise = torch.stft(torch.tensor(signal.noise["audio"]), n_fft = 800, window = torch.hann_window(800), return_complex = True).unsqueeze(0)
@@ -460,20 +424,20 @@ def plot_reconstruction_dc(model, path_to_signal, clustering_model):
 
     fig, axes = plt.subplots(4,2, figsize = (25,12))
 
-    pcm0 = axes[0,0].pcolormesh(20*np.log10(np.abs(Smix[0,:,:].detach().numpy())), cmap='viridis')
+    pcm0 = axes[0,0].pcolormesh(np.abs(Smix[0,:,:].detach().numpy()), cmap='viridis')
     fig.colorbar(pcm0, ax = axes[0,0])
     axes[0,0].set_title("Spectrogramme du mix")
 
-    pcm1 = axes[0,1].pcolormesh(20*np.log10(np.abs(Svoice[0,:,:].detach().numpy())), cmap='viridis')
+    pcm1 = axes[0,1].pcolormesh(np.abs(Svoice[0,:,:].detach().numpy()), cmap='viridis')
     fig.colorbar(pcm1, ax = axes[0,1])
     axes[0,1].set_title("Spectrogramme du ground truth")
 
-    pcm2 = axes[1,0].pcolormesh(20*np.log10(np.abs(S1com.detach().numpy())), cmap='viridis')
-    fig.colorbar(pcm2, ax = axes[0,2])
+    pcm2 = axes[1,0].pcolormesh(np.abs(S1com.detach().numpy()), cmap='viridis')
+    fig.colorbar(pcm2, ax = axes[1,0])
     axes[1,0].set_title("Spectrogramme du premier cluster")
 
-    pcm2 = axes[1,1].pcolormesh(20*np.log10(np.abs(S2com.detach().numpy())), cmap='viridis')
-    fig.colorbar(pcm2, ax = axes[0,2])
+    pcm2 = axes[1,1].pcolormesh(np.abs(S2com.detach().numpy()), cmap='viridis')
+    fig.colorbar(pcm2, ax = axes[1,1])
     axes[1,1].set_title("Spectrogramme du deuxième cluster")
 
     time = np.array(list(range(80000)))/8000
@@ -483,11 +447,45 @@ def plot_reconstruction_dc(model, path_to_signal, clustering_model):
     axes[2,1].plot(time, signal.voice["audio"])
     axes[2,1].set_title("Voice Signal")
 
-    axes[3,1].plot(time, au1.detach().numpy())
-    axes[3,1].set_title("Signal 1er cluster")
+    axes[3,0].plot(time, au1.detach().numpy())
+    axes[3,0].set_title("Signal 1er cluster")
 
-    axes[3,2].plot(time, au2.detach().numpy())
-    axes[3,2].set_title("Signal 2eme cluster")
+    axes[3,1].plot(time, au2.detach().numpy())
+    axes[3,1].set_title("Signal 2eme cluster")
 
     plt.tight_layout()
     plt.show()
+
+def count_parameters(model):
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    non_trainable_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    total_params = trainable_params + non_trainable_params
+    
+    print(f"Trainable parameters: {trainable_params}")
+    print(f"Non-trainable parameters: {non_trainable_params}")
+    print(f"Total parameters: {total_params}")
+
+def SISDR_by_SNR_DC(model, clustering_model, test_data, affichage = True, model_name = "Deep Clustering", device = 'cpu', spectrogram = True):
+    '''
+    Compute the Si-SDR by SNR, only for the deep clustering model
+    '''
+    device = torch.device(device)
+    model.to(device)
+
+    si_sdr_dict = { str(int(snr)) : [] for snr in test_data.SNR.unique()}
+
+    si_sdr = ScaleInvariantSignalDistortionRatio().to(device)
+    for i in range(len(test_data)):
+        snr = test_data.iloc[i]['SNR']
+        path_to_data = test_data.iloc[i]['Path']
+        signal = load_signal(path_to_data)
+        _, voice_audio = scipy.io.wavfile.read(os.path.join(path_to_data, 'voice.wav'))
+        _, mix_audio = scipy.io.wavfile.read(path_to_data+'/mix_snr_{:.0f}.wav'.format(snr))
+        voice_audio = torch.Tensor(voice_audio)
+        au1,au2,S1,S2 = compute_clustering(clustering_model, model, signal.mix["audio"], device="cpu")
+        si_sdr_dict[str(int(snr))].append(float(np.max([si_sdr(voice_audio.to(device),au1).cpu().detach().numpy(),si_sdr(voice_audio.to(device),au2).cpu().detach().numpy()])))
+    
+    if affichage :
+        plot_SISDR_by_SNR(si_sdr_dict, model_name)
+    
+    return si_sdr_dict
